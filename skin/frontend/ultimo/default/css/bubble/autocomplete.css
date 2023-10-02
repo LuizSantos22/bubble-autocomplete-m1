@@ -10,11 +10,11 @@ input[type=search].tt-hint {
 
 .tt-dropdown-menu {
     margin-top: 15px;
-    width: 30000px !important; /* Adjust the width as needed */
+    width: 30000px !important; /* Adjusted the width to have a larger search box on the header */
 }
 
 .tt-menu {
-    z-index: 10000 !important;
+    z-index: 10000 !important;/* Adjust z-index to dropdown box stays over main menu instead of behind it */
 }
 
 
