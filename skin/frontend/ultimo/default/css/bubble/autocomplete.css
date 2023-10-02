@@ -14,7 +14,7 @@ input[type=search].tt-hint {
 }
 
 .tt-menu {
-    z-index: 10000 !important;/* Adjust z-index to dropdown box stays over main menu instead of behind it */
+    z-index: 10000 !important;/* Adjusted z-index to higher priority so dropdown box stays over Ultimo's main menu instead of behind it */
 }
 
 
