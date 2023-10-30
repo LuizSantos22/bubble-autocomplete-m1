@@ -24,7 +24,7 @@ input[type=search].tt-hint {
 
     .tt-menu {
         width: 100%; /* Adjusted used 100% so it will fit search box on top either on desktop or mobile devices */
-        z-index: 10000 !important; /* Adjusted z-index to higher priority so dropdown box stays over Ultimo's main menu instead of behind it */
+        z-index: 10000 !important; /* Adjusted z-index to higher priority so dropdown box stays over main menu instead of behind it */
     }
 
 
@@ -98,4 +98,5 @@ input[type=search].tt-hint {
 
 .tt-dataset-products a .clearer {
     clear: both;
+}
 }
