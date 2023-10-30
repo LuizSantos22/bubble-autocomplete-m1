@@ -1,22 +1,31 @@
 .twitter-typeahead {
     width: 100%;
-}
+    text-align: left; /* Align the input and suggestions container to the left */
+    }
 
+/* Hide the hint text by setting its color to match the background color */
 input[type=search].tt-hint {
     height: 40px;
-    color: #ccc;
+    color: transparent; /* Make the text color transparent */
     font-family: "Raleway", "Helvetica Neue", Verdana, Arial, sans-serif;
 }
 
-.tt-dropdown-menu {
-    margin-top: 15px;
-    width: 30000px !important; /* Adjusted the width to have a larger search box on the header */
-}
+/* Adjusted styles for product suggestions on desktop */
+@media (min-width: 768px) {
+    .tt-dataset-products a {
+        text-align: left; /* Align the text to the left */
+    }
 
-.tt-menu {
-    width: 100%; /* Adjusted used 100% so it will fit search box on top either on desktop or mobile devices */
-    z-index: 10000 !important;/* Adjusted z-index to higher priority so dropdown box stays over Ultimo's main menu instead of behind it */
-}
+    .tt-dropdown-menu {
+        margin-top: 15px;
+        text-align: left; /* Align the dropdown menu to the left */
+        width: 100%; 
+    }
+
+    .tt-menu {
+        width: 100%; /* Adjusted used 100% so it will fit search box on top either on desktop or mobile devices */
+        z-index: 10000 !important; /* Adjusted z-index to higher priority so dropdown box stays over Ultimo's main menu instead of behind it */
+    }
 
 
 .tt-dataset-products .empty {
@@ -24,7 +33,7 @@ input[type=search].tt-hint {
 }
 
 .tt-dataset-products {
-    border: 1px solid #3399cc;
+    border: 1px solid #bcbcbc;
     background: #fff;
     border-radius: 2px;
 }
@@ -37,7 +46,7 @@ input[type=search].tt-hint {
     display: block;
     border-right: 7px solid transparent;
     border-left: 7px solid transparent;
-    border-bottom: 7px solid #3399cc;
+    border-bottom: 7px solid #bcbcbc;
     border-top: none;
     left: 50%;
     top: -7px;
@@ -62,7 +71,7 @@ input[type=search].tt-hint {
 .tt-suggestion.tt-cursor a .price-box .price-label,
 .tt-suggestion.tt-cursor a .price-box .price {
     color: #fff;
-    background-color: #3399cc;
+    background-color: #eeeeee;
     text-decoration: none;
 }
 
