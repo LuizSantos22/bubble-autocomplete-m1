@@ -45,23 +45,36 @@ document.addEventListener('DOMContentLoaded', function () {
         return dp[m][n];
     }
 
-    function fuzzyMatch(query, name) {
-        query = query.toLowerCase();
-        name  = name.toLowerCase();
+    function fuzzyMatchWord(queryWord, name) {
+        // testa se uma única palavra da query bate com alguma palavra do nome
+        if (name.indexOf(queryWord) !== -1) return true;
 
-        // match exato (substring) tem prioridade
-        if (name.indexOf(query) !== -1) return true;
-
-        // typo tolerant: testa cada palavra do nome
-        var words = name.split(' ');
-        var threshold = query.length <= 4 ? 1 : 2; // 1 erro p/ palavras curtas, 2 p/ longas
-        for (var i = 0; i < words.length; i++) {
-            var word = words[i].substring(0, query.length + 2);
-            if (levenshtein(query, word) <= threshold) {
+        var nameWords = name.split(' ');
+        var threshold = queryWord.length <= 4 ? 1 : 2;
+        for (var i = 0; i < nameWords.length; i++) {
+            var nameWord = nameWords[i].substring(0, queryWord.length + 2);
+            if (levenshtein(queryWord, nameWord) <= threshold) {
                 return true;
             }
         }
         return false;
+    }
+
+    function fuzzyMatch(query, name) {
+        query = query.toLowerCase();
+        name  = name.toLowerCase();
+
+        // match exato (substring completo) tem prioridade
+        if (name.indexOf(query) !== -1) return true;
+
+        // multi-palavra: todas as palavras da query precisam bater no nome
+        var queryWords = query.trim().split(/\s+/);
+        for (var i = 0; i < queryWords.length; i++) {
+            if (!fuzzyMatchWord(queryWords[i], name)) {
+                return false; // uma palavra não bateu, descarta
+            }
+        }
+        return true;
     }
 
     // constructs the suggestion engine
