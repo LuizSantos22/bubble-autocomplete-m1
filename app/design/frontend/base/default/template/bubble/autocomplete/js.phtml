@@ -22,13 +22,49 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     jQuery('#search').removeClass('required-entry');
 
-// init some useful variables
+    // init some useful variables
     var priceFormat = <?php echo $this->helper('core')->jsonEncode($helper->getJsPriceFormat()) ?>;
     var baseUrl = '<?php echo $helper->getBaseUrl() ?>';
     var baseUrlMedia = '<?php echo $helper->getBaseUrlMedia() ?>';
     var imgPlaceholder = '<?php echo Mage::getModel('catalog/product')->getSmallImageUrl(100, 100); ?>';
 
-// constructs the suggestion engine
+    // --- Typo tolerant: Levenshtein em JS puro ---
+    function levenshtein(a, b) {
+        var m = a.length, n = b.length, dp = [];
+        for (var i = 0; i <= m; i++) {
+            dp[i] = [i];
+            for (var j = 1; j <= n; j++) {
+                dp[i][j] = i === 0 ? j :
+                    Math.min(
+                        dp[i-1][j] + 1,
+                        dp[i][j-1] + 1,
+                        dp[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1)
+                    );
+            }
+        }
+        return dp[m][n];
+    }
+
+    function fuzzyMatch(query, name) {
+        query = query.toLowerCase();
+        name  = name.toLowerCase();
+
+        // match exato (substring) tem prioridade
+        if (name.indexOf(query) !== -1) return true;
+
+        // typo tolerant: testa cada palavra do nome
+        var words = name.split(' ');
+        var threshold = query.length <= 4 ? 1 : 2; // 1 erro p/ palavras curtas, 2 p/ longas
+        for (var i = 0; i < words.length; i++) {
+            var word = words[i].substring(0, query.length + 2);
+            if (levenshtein(query, word) <= threshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // constructs the suggestion engine
     var engine = new Bloodhound({
         datumTokenizer: Bloodhound.tokenizers.obj.whitespace('name'),
         queryTokenizer: Bloodhound.tokenizers.whitespace,
@@ -43,8 +79,35 @@ document.addEventListener('DOMContentLoaded', function () {
         <?php endif; ?>
     });
 
-// kicks off the loading/processing of `local` and `prefetch`
+    // kicks off the loading/processing of `local` and `prefetch`
     engine.initialize();
+
+    // Carrega todos os produtos no cache global para o fuzzy fallback
+    jQuery.getJSON('<?php echo $this->getUrl('autocomplete/product/json') ?>', function(data) {
+        window._bubbleAllProducts = data;
+    });
+
+    // Source com fallback fuzzy quando Bloodhound não encontra resultados exatos
+    function fuzzySource(query, syncResults, asyncResults) {
+        engine.search(query,
+            function(exactResults) {
+                if (exactResults.length > 0) {
+                    syncResults(exactResults);
+                } else if (window._bubbleAllProducts) {
+                    // sem resultado exato: aplica levenshtein no cache completo
+                    var fuzzy = window._bubbleAllProducts.filter(function(p) {
+                        return fuzzyMatch(query, p.name);
+                    }).slice(0, <?php echo $helper->getLimit() ?>);
+                    syncResults(fuzzy);
+                } else {
+                    syncResults([]);
+                }
+            },
+            function(remoteResults) {
+                asyncResults(remoteResults);
+            }
+        );
+    }
 
     jQuery('#search').typeahead({
         hint: true,
@@ -53,12 +116,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }, {
         name: 'products',
         displayKey: 'name',
-        // `ttAdapter` wraps the suggestion engine in an adapter that
-        // is compatible with the typeahead jQuery plugin
-        source: engine.ttAdapter(),
+        source: fuzzySource,
         templates: {
             empty: '<div class="empty">' +
-                '<?php echo $this->__('No Result') ?>' +
+                '<?php /* echo $this->__('No Result') */ ?>' +  // This will not execute, comment out to avoid text showing at search box
                 '</div>',
             suggestion: function (product) {
                 var img = imgPlaceholder;
