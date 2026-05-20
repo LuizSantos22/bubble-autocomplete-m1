@@ -1,0 +1,487 @@
+<?php
+$helper = $this->helper('bubble_autocomplete');
+?>
+<?php if ($helper->isEnabled()): ?>
+<script type="text/javascript">
+//<![CDATA[
+
+// ─── Voice Search ─────────────────────────────────────────────────────────
+(function () {
+
+    function initVoiceSearch() {
+
+        var searchInput = document.getElementById('search');
+        if (!searchInput) return;
+        if (document.getElementById('bvs-btn')) return;
+
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+            console.warn('SpeechRecognition não suportado');
+            return;
+        }
+
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            console.warn('VoiceSearch requer HTTPS');
+            return;
+        }
+
+        // --------------------------------------------------------------
+        // 1. Prepara o botão
+        // --------------------------------------------------------------
+        var btn = document.createElement('button');
+        btn.setAttribute('type', 'button');
+        btn.setAttribute('id', 'bvs-btn');
+        btn.setAttribute('aria-label', '<?php echo $this->__('Search by voice') ?>');
+        btn.title = '<?php echo $this->__('Search by voice') ?>';
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+
+        var formSearch = jQuery(searchInput).closest('.form-search')[0] || searchInput.parentNode;
+        formSearch.style.position = 'relative';
+        formSearch.appendChild(btn);
+
+        // --------------------------------------------------------------
+        // 2. Configuração do SpeechRecognition
+        // --------------------------------------------------------------
+        var recognition = new SR();
+        // TESTE: troque para 'en-US' para verificar se o problema é o idioma
+        recognition.lang = 'pt-BR';
+        // recognition.lang = 'en-US';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        var listening = false;
+        var recognizing = false;
+        var autoCompleteDisabled = false;
+
+        // Desativa os handlers de autocomplete para evitar conflito
+        function disableAutocomplete() {
+            if (autoCompleteDisabled) return;
+            autoCompleteDisabled = true;
+            jQuery('#search').off('input keyup.ttVoice');
+            jQuery('#search').on('input.ttVoice keyup.ttVoice', function(e) {
+                e.stopImmediatePropagation();
+            });
+        }
+
+        function enableAutocomplete() {
+            if (!autoCompleteDisabled) return;
+            autoCompleteDisabled = false;
+            jQuery('#search').off('.ttVoice');
+            // Recria os eventos originais (já existentes no DOMContentLoaded)
+            // Basta re-disparar o evento de input para o autocomplete funcionar novamente
+            if (searchInput.value.trim().length >= <?php echo $helper->getMinLength() ?>) {
+                jQuery(searchInput).trigger('input');
+            }
+        }
+
+        function stopListening() {
+            if (!listening) return;
+            listening = false;
+            recognizing = false;
+            btn.classList.remove('bvs-listening');
+            btn.title = '<?php echo $this->__('Search by voice') ?>';
+            enableAutocomplete();
+        }
+
+        // Eventos de diagnóstico
+        recognition.onaudiostart = function() { console.log('🎤 onaudiostart'); };
+        recognition.onaudioend   = function() { console.log('🔇 onaudioend'); };
+        recognition.onspeechstart = function() { console.log('🗣️ onspeechstart'); };
+        recognition.onspeechend  = function() { console.log('⏹️ onspeechend'); };
+        recognition.onnomatch    = function() { console.log('❌ onnomatch'); };
+
+        recognition.onstart = function() {
+            console.log('✅ VOICE START');
+            listening = true;
+            recognizing = true;
+            btn.classList.add('bvs-listening');
+            btn.title = '<?php echo $this->__('Listening… click to cancel') ?>';
+            disableAutocomplete();  // evita que o autocomplete limpe o campo durante a captura
+        };
+
+        recognition.onresult = function(e) {
+            console.log('📝 VOICE RESULT', e);
+            if (!e.results || e.results.length === 0) return;
+
+            var lastResult = e.results[e.results.length - 1];
+            if (!lastResult || !lastResult[0]) return;
+
+            var transcript = lastResult[0].transcript;
+            var isFinal = lastResult.isFinal;
+
+            console.log('🔊 TRANSCRIPT (final=' + isFinal + '):', transcript);
+
+            if (isFinal && transcript) {
+                searchInput.value = transcript;
+                // Dispara eventos manuais de forma segura (sem bloquear)
+                var evtInput = document.createEvent('Event');
+                evtInput.initEvent('input', true, true);
+                searchInput.dispatchEvent(evtInput);
+                var evtKeyup = document.createEvent('Event');
+                evtKeyup.initEvent('keyup', true, true);
+                searchInput.dispatchEvent(evtKeyup);
+
+                // Para o reconhecimento após obter resultado final
+                if (recognizing) {
+                    try { recognition.stop(); } catch(er) {}
+                    recognizing = false;
+                }
+                stopListening();
+            }
+        };
+
+        recognition.onerror = function(e) {
+            console.warn('⚠️ VOICE ERROR:', e.error, e);
+            if (e.error === 'no-speech') {
+                console.log('Nenhuma fala detectada – talvez o microfone não esteja captando som');
+            } else if (e.error === 'not-allowed') {
+                alert('Permissão do microfone negada. Toque no ícone de cadeado na barra de endereço e permita o acesso.');
+            } else if (e.error === 'network') {
+                alert('Erro de rede. Verifique sua conexão.');
+            } else {
+                console.log('Erro não tratado:', e.error);
+            }
+            stopListening();
+        };
+
+        recognition.onend = function() {
+            console.log('⏹️ VOICE END');
+            stopListening();
+        };
+
+        // --------------------------------------------------------------
+        // 3. Fallback nativo (x-webkit-speech) caso o SR falhe
+        // --------------------------------------------------------------
+        var fallbackAttempts = 0;
+        function tryNativeSpeech() {
+            if (fallbackAttempts > 1) return;
+            fallbackAttempts++;
+            if (searchInput.hasAttribute('x-webkit-speech')) return;
+
+            console.log('Tentando fallback com x-webkit-speech');
+            searchInput.setAttribute('x-webkit-speech', '');
+            searchInput.setAttribute('speech', '');
+            // Adiciona um pequeno aviso visual
+            var oldPlaceholder = searchInput.getAttribute('placeholder') || '';
+            searchInput.setAttribute('placeholder', oldPlaceholder + ' (toque no microfone do teclado)');
+            alert('O reconhecimento de voz padrão falhou. Use o microfone que aparecerá dentro da caixa de busca.');
+        }
+
+        // --------------------------------------------------------------
+        // 4. Clique do botão (com user gesture preservado)
+        // --------------------------------------------------------------
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (listening) {
+                try { recognition.stop(); } catch(er) {}
+                return;
+            }
+
+            // Tenta iniciar o SR
+            try {
+                console.log('🚀 STARTING RECOGNITION');
+                recognition.start();
+                // Se após 5 segundos não houver resultado, considera falha e ativa fallback
+                setTimeout(function() {
+                    if (listening && !recognizing) {
+                        console.warn('Timeout: nenhum resultado após 5s');
+                        try { recognition.stop(); } catch(er) {}
+                        tryNativeSpeech();
+                    }
+                }, 5000);
+            } catch (startErr) {
+                console.warn('START ERROR:', startErr);
+                tryNativeSpeech();
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initVoiceSearch);
+    } else {
+        initVoiceSearch();
+    }
+})();
+// ─────────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', function () {
+
+    Ajax.Autocompleter.prototype.getUpdatedChoices = function() { return false; };
+    jQuery('#search').removeClass('required-entry');
+
+    var priceFormat    = <?php echo $this->helper('core')->jsonEncode($helper->getJsPriceFormat()) ?>;
+    var baseUrl        = '<?php echo $helper->getBaseUrl() ?>';
+    var baseUrlMedia   = '<?php echo $helper->getBaseUrlMedia() ?>';
+    var imgPlaceholder = '<?php echo Mage::getModel('catalog/product')->getSmallImageUrl(100, 100); ?>';
+    var searchUrl      = '<?php echo $this->getUrl('catalogsearch/result') ?>';
+    var isMobile       = window.innerWidth <= 768;
+
+    window.addEventListener('resize', function () {
+        isMobile = window.innerWidth <= 768;
+    });
+
+    // ─── Levenshtein / Fuzzy ──────────────────────────────────────────────
+    function levenshtein(a, b) {
+        var m = a.length, n = b.length, dp = [];
+        for (var i = 0; i <= m; i++) {
+            dp[i] = [i];
+            for (var j = 1; j <= n; j++) {
+                dp[i][j] = i === 0 ? j :
+                    Math.min(dp[i-1][j]+1, dp[i][j-1]+1,
+                             dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+            }
+        }
+        return dp[m][n];
+    }
+    function normalize(str) {
+    return str.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[-\/\\_.]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+function fuzzyMatchWord(queryWord, name) {
+    if (name.indexOf(queryWord) !== -1) return true;
+    var nameWords = name.split(' ');
+    var threshold = queryWord.length <= 3 ? 1 : 2;
+    for (var i = 0; i < nameWords.length; i++) {
+        if (levenshtein(queryWord, nameWords[i].substring(0, queryWord.length + 2)) <= threshold) return true;
+    }
+    return false;
+}
+function fuzzyMatch(query, name) {
+    var q = normalize(query);
+    var n = normalize(name);
+    if (n.indexOf(q) !== -1) return true;
+    var queryWords = q.split(/\s+/);
+    for (var i = 0; i < queryWords.length; i++) {
+        if (!fuzzyMatchWord(queryWords[i], n)) return false;
+    }
+    return true;
+}
+
+    // ─── Bloodhound ───────────────────────────────────────────────────────
+    var engine = new Bloodhound({
+        datumTokenizer: Bloodhound.tokenizers.obj.whitespace('name'),
+        queryTokenizer: Bloodhound.tokenizers.whitespace,
+        limit: <?php echo $helper->getLimit() ?>,
+        <?php if ($helper->getUseLocalStorage()): ?>
+        prefetch: {
+            url: '<?php echo $this->getUrl('autocomplete/product/json') ?>',
+            ttl: <?php echo $helper->getCacheLifetime() * 1000 ?>
+        }
+        <?php else: ?>
+        remote: { url: '<?php echo $this->getUrl('autocomplete/product/json') ?>' }
+        <?php endif; ?>
+    });
+    engine.initialize();
+
+    jQuery.getJSON('<?php echo $this->getUrl('autocomplete/product/json') ?>', function (data) {
+        window._bubbleAllProducts = data;
+    });
+
+    function fuzzySource(query, syncResults, asyncResults) {
+        engine.search(query,
+            function (exactResults) {
+                if (exactResults.length > 0) {
+                    syncResults(exactResults);
+                } else if (window._bubbleAllProducts) {
+                    syncResults(window._bubbleAllProducts.filter(function (p) {
+                        return fuzzyMatch(query, p.name);
+                    }).slice(0, <?php echo $helper->getLimit() ?>));
+                } else {
+                    syncResults([]);
+                }
+            },
+            function (remoteResults) { asyncResults(remoteResults); }
+        );
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────
+    function escHtml(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fmtPrice(product) {
+    if (parseFloat(product.final_price) < parseFloat(product.price)) {
+        return '<span class="tt-card-price-old">' + formatCurrency(product.price, priceFormat, false) + '</span> ' +
+               '<span class="tt-card-price">' + formatCurrency(product.final_price, priceFormat, false) + '</span>';
+    }
+    return '<span class="tt-card-price">' + formatCurrency(product.price, priceFormat, false) + '</span>';
+}
+
+    function getMenuCategories() {
+        var cats = [];
+        jQuery('#mainmenu > ul > li.nav-item--parent > a.level-top').each(function () {
+            var $a = jQuery(this);
+            cats.push({ name: $a.find('span').first().text().trim(), url: $a.attr('href') });
+        });
+        return cats;
+    }
+
+    function positionDropdown($menu) {
+        var $container = jQuery('.hp-blocks-holder');
+        if (!$container.length) $container = jQuery('.header-primary .inner-container');
+        var offset = $container.offset();
+        $menu.css({
+            top:   offset.top + $container.outerHeight() + 'px',
+            left:  offset.left + 'px',
+            width: $container.outerWidth() + 'px'
+        });
+    }
+
+    function positionDropdownMobile($menu) {
+        var $input = jQuery('#search');
+        var offset = $input.closest('.form-search').offset();
+        var top    = offset.top + $input.closest('.form-search').outerHeight();
+        $menu.css({
+            top:   top + 'px',
+            left:  0,
+            width: '100%'
+        });
+    }
+
+    // ─── Build menu ───────────────────────────────────────────────────────
+    var $ttMenu = null;
+
+    function buildMenu(query, products) {
+        var html = '';
+
+        if (isMobile) {
+            // ── Mobile: lista vertical simples ──
+            var rightTitle = '<div class="tt-col-right-title"><?php echo $this->__('Products') ?></div>';
+            var listHtml = '';
+
+            if (products.length) {
+                products.slice(0, 6).forEach(function (p) {
+                    var img = imgPlaceholder;
+                    if (p.thumbnail && p.thumbnail !== 'no_selection') img = baseUrlMedia + p.thumbnail;
+                    listHtml +=
+                        '<a class="tt-product-card" href="' + baseUrl + p.url_path + '">' +
+                        '<img src="' + escHtml(img) + '" alt="' + escHtml(p.name) + '" loading="lazy"/>' +
+                        '<div class="tt-card-body">' +
+                            '<div class="tt-card-name">' + escHtml(p.name) + '</div>' +
+                            '<div>' + fmtPrice(p) + '</div>' +
+                        '</div>' +
+                        '<span class="tt-card-arrow">›</span>' +
+                        '</a>';
+                });
+                listHtml += '<a class="tt-see-all" href="' + searchUrl + '?q=' + encodeURIComponent(query) + '">' +
+                    '<?php echo $this->__('See all results for') ?> &ldquo;' + escHtml(query) + '&rdquo; &rarr;</a>';
+            } else {
+                listHtml = '<div class="tt-empty-state"><?php echo $this->__('No products found') ?></div>';
+            }
+
+            html = '<div class="tt-col-right">' + rightTitle + '<div class="tt-products-grid">' + listHtml + '</div></div>';
+
+        } else {
+            // ── Desktop: duas colunas ──
+            var allCats = getMenuCategories();
+            var cats = allCats.filter(function (c) {
+                return c.name.toLowerCase().indexOf(query.toLowerCase()) !== -1;
+            }).slice(0, 4);
+            if (!cats.length) cats = allCats.slice(0, 4);
+
+            // Sugestões de texto
+            var seen = {}, sugs = [];
+            products.slice(0, 8).forEach(function (p) {
+                p.name.split(/\s+/).forEach(function (w) {
+                    var wl = w.toLowerCase();
+                    if (wl.indexOf(query.toLowerCase()) !== -1 && wl.length > 2 && !seen[wl]) {
+                        seen[wl] = true; sugs.push(w);
+                    }
+                });
+            });
+            if (!seen[query.toLowerCase()]) sugs.unshift(query);
+            sugs = sugs.slice(0, 6);
+
+            var leftHtml = '<div class="tt-col-left">';
+            if (sugs.length) {
+                leftHtml += '<div class="tt-col-left-title"><?php echo $this->__('Suggestions') ?></div>';
+                sugs.forEach(function (s) {
+                    leftHtml += '<a class="tt-suggestion-text" href="' + searchUrl + '?q=' + encodeURIComponent(s) + '">' +
+                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+                        escHtml(s) + '</a>';
+                });
+            }
+            leftHtml += '<div class="tt-categories-section"><div class="tt-col-left-title"><?php echo $this->__('Categories') ?></div>';
+            cats.forEach(function (c) {
+                leftHtml += '<a class="tt-suggestion-text" href="' + escHtml(c.url) + '">' +
+                    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>' +
+                    escHtml(c.name) + '</a>';
+            });
+            leftHtml += '</div></div>';
+
+            var rightHtml = '<div class="tt-col-right"><div class="tt-col-right-title"><?php echo $this->__('Products') ?></div>';
+            if (products.length) {
+                rightHtml += '<div class="tt-products-grid">';
+                products.slice(0, 8).forEach(function (p) {
+                    var img = imgPlaceholder;
+                    if (p.thumbnail && p.thumbnail !== 'no_selection') img = baseUrlMedia + p.thumbnail;
+                    rightHtml += '<a class="tt-product-card" href="' + baseUrl + p.url_path + '">' +
+                        '<img src="' + escHtml(img) + '" alt="' + escHtml(p.name) + '" loading="lazy"/>' +
+                        '<div class="tt-card-name">' + escHtml(p.name) + '</div>' +
+                        '<div>' + fmtPrice(p) + '</div>' +
+                        '</a>';
+                });
+                rightHtml += '</div>';
+            } else {
+                rightHtml += '<div class="tt-empty-state"><?php echo $this->__('No products found') ?></div>';
+            }
+            rightHtml += '</div>';
+
+            html = leftHtml + rightHtml;
+        }
+
+        if (!$ttMenu) {
+            $ttMenu = jQuery('<div class="tt-menu"></div>').appendTo('body');
+        }
+        $ttMenu.html(html).addClass('tt-open').show();
+
+        if (isMobile) {
+            positionDropdownMobile($ttMenu);
+        } else {
+            positionDropdown($ttMenu);
+        }
+    }
+
+    function closeMenu() {
+        if ($ttMenu) $ttMenu.removeClass('tt-open').hide();
+    }
+
+    // ─── Eventos ──────────────────────────────────────────────────────────
+    var _debounce;
+    jQuery('#search').on('input keyup', function () {
+        var query = jQuery(this).val().trim();
+        if (query.length < <?php echo $helper->getMinLength() ?>) { closeMenu(); return; }
+        clearTimeout(_debounce);
+        _debounce = setTimeout(function () {
+            fuzzySource(query,
+                function (results) { buildMenu(query, results); },
+                function (results) { if (results && results.length) buildMenu(query, results); }
+            );
+        }, 120);
+    });
+
+    jQuery(document).on('click', function (e) {
+        if (!jQuery(e.target).closest('#search, .tt-menu').length) closeMenu();
+    });
+
+    jQuery(window).on('resize', function () {
+        if ($ttMenu && $ttMenu.hasClass('tt-open')) {
+            if (isMobile) positionDropdownMobile($ttMenu);
+            else positionDropdown($ttMenu);
+        }
+    });
+
+    jQuery('#search').on('keydown', function (e) {
+        if (e.which === 13) closeMenu();
+    });
+
+});
+//]]>
+</script>
+<?php endif; ?>
