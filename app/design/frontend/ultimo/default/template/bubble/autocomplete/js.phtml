@@ -43,11 +43,9 @@ $helper = $this->helper('bubble_autocomplete');
         // 2. Configuração do SpeechRecognition
         // --------------------------------------------------------------
         var recognition = new SR();
-        // TESTE: troque para 'en-US' para verificar se o problema é o idioma
         recognition.lang = 'pt-BR';
-        // recognition.lang = 'en-US';
-        recognition.continuous = true;
-        recognition.interimResults = true;
+        recognition.continuous = /Mobi|Android/i.test(navigator.userAgent);
+        recognition.interimResults = /Mobi|Android/i.test(navigator.userAgent);
         recognition.maxAlternatives = 1;
 
         var listening = false;
@@ -263,6 +261,11 @@ function fuzzyMatch(query, name) {
     return true;
 }
 
+ function skuMatch(query, sku) {
+    if (!sku) return false;
+    return normalize(sku).indexOf(normalize(query)) !== -1;
+}
+
     // ─── Bloodhound ───────────────────────────────────────────────────────
     var engine = new Bloodhound({
         datumTokenizer: Bloodhound.tokenizers.obj.whitespace('name'),
@@ -290,7 +293,7 @@ function fuzzyMatch(query, name) {
                     syncResults(exactResults);
                 } else if (window._bubbleAllProducts) {
                     syncResults(window._bubbleAllProducts.filter(function (p) {
-                        return fuzzyMatch(query, p.name);
+                        return skuMatch(query, p.sku) || fuzzyMatch(query, p.name);
                     }).slice(0, <?php echo $helper->getLimit() ?>));
                 } else {
                     syncResults([]);
@@ -356,19 +359,21 @@ function fuzzyMatch(query, name) {
             var listHtml = '';
 
             if (products.length) {
-                products.slice(0, 6).forEach(function (p) {
-                    var img = imgPlaceholder;
-                    if (p.thumbnail && p.thumbnail !== 'no_selection') img = baseUrlMedia + p.thumbnail;
-                    listHtml +=
-                        '<a class="tt-product-card" href="' + baseUrl + p.url_path + '">' +
-                        '<img src="' + escHtml(img) + '" alt="' + escHtml(p.name) + '" loading="lazy"/>' +
-                        '<div class="tt-card-body">' +
-                            '<div class="tt-card-name">' + escHtml(p.name) + '</div>' +
-                            '<div>' + fmtPrice(p) + '</div>' +
-                        '</div>' +
-                        '<span class="tt-card-arrow">›</span>' +
-                        '</a>';
-                });
+    products.slice(0, 6).forEach(function (p) {
+        var img = imgPlaceholder;
+        if (p.thumbnail && p.thumbnail !== 'no_selection') img = baseUrlMedia + p.thumbnail;
+        var skuHtml = (p.sku && skuMatch(query, p.sku)) ? '<div class="tt-card-sku">SKU: ' + escHtml(p.sku) + '</div>' : '';
+        listHtml +=
+            '<a class="tt-product-card" href="' + baseUrl + p.url_path + '">' +
+            '<img src="' + escHtml(img) + '" alt="' + escHtml(p.name) + '" loading="lazy"/>' +
+            '<div class="tt-card-body">' +
+                '<div class="tt-card-name">' + escHtml(p.name) + '</div>' +
+                skuHtml +
+                '<div>' + fmtPrice(p) + '</div>' +
+            '</div>' +
+            '<span class="tt-card-arrow">›</span>' +
+            '</a>';
+    });
                 listHtml += '<a class="tt-see-all" href="' + searchUrl + '?q=' + encodeURIComponent(query) + '">' +
                     '<?php echo $this->__('See all results for') ?> &ldquo;' + escHtml(query) + '&rdquo; &rarr;</a>';
             } else {
@@ -421,11 +426,13 @@ function fuzzyMatch(query, name) {
                 products.slice(0, 8).forEach(function (p) {
                     var img = imgPlaceholder;
                     if (p.thumbnail && p.thumbnail !== 'no_selection') img = baseUrlMedia + p.thumbnail;
-                    rightHtml += '<a class="tt-product-card" href="' + baseUrl + p.url_path + '">' +
-                        '<img src="' + escHtml(img) + '" alt="' + escHtml(p.name) + '" loading="lazy"/>' +
-                        '<div class="tt-card-name">' + escHtml(p.name) + '</div>' +
-                        '<div>' + fmtPrice(p) + '</div>' +
-                        '</a>';
+                   var skuHtml = (p.sku && skuMatch(query, p.sku)) ? '<div class="tt-card-sku">SKU: ' + escHtml(p.sku) + '</div>' : '';
+rightHtml += '<a class="tt-product-card" href="' + baseUrl + p.url_path + '">' +
+    '<img src="' + escHtml(img) + '" alt="' + escHtml(p.name) + '" loading="lazy"/>' +
+    '<div class="tt-card-name">' + escHtml(p.name) + '</div>' +
+    skuHtml +
+    '<div>' + fmtPrice(p) + '</div>' +
+    '</a>';
                 });
                 rightHtml += '</div>';
             } else {
