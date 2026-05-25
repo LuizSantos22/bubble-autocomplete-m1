@@ -297,3 +297,55 @@ input[type=search].tt-hint {
         font-size: 10px;
     }
 }
+
+/* ─── Image Search Button ─────────────────────────────────────────────────── */
+#bis-btn {
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 201;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #aaa;
+    padding: 4px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+}
+#bis-btn:hover { color: #2c85c8; }
+
+#search {
+    padding-right: 34px !important;
+}
+
+@media (max-width: 768px) {
+    #bis-btn {
+        display: flex !important;
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 32px;
+        height: 32px;
+        z-index: 30;
+        background: transparent;
+        border: 0;
+        padding: 0;
+        margin: 0;
+        align-items: center;
+        justify-content: center;
+        touch-action: manipulation;
+    }
+    #bis-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+    #search {
+        padding-right: 42px !important;
+    }
+}
+
