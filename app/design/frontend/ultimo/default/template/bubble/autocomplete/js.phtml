@@ -203,6 +203,106 @@ $helper = $this->helper('bubble_autocomplete');
         initVoiceSearch();
     }
 })();
+
+// ─── Image Search (Google Lens) ───────────────────────────────────────────
+(function () {
+    function initImageSearch() {
+        var searchInput = document.getElementById('search');
+        if (!searchInput) return;
+        if (document.getElementById('bis-btn')) return;
+
+        var btn = document.createElement('button');
+        btn.setAttribute('type', 'button');
+        btn.setAttribute('id', 'bis-btn');
+        btn.setAttribute('aria-label', '<?php echo $this->__('Search by image') ?>');
+        btn.title = '<?php echo $this->__('Search by image') ?>';
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+
+        var fileInput = document.createElement('input');
+        fileInput.setAttribute('type', 'file');
+        fileInput.setAttribute('accept', 'image/*');
+        fileInput.setAttribute('id', 'bis-file');
+        fileInput.style.display = 'none';
+
+        var formSearch = jQuery(searchInput).closest('.form-search')[0] || searchInput.parentNode;
+        formSearch.appendChild(btn);
+        formSearch.appendChild(fileInput);
+
+        var uploadUrl = 'https://bubble-imagesearch.onrender.com/upload';
+
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function () {
+            var file = fileInput.files[0];
+            if (!file) return;
+
+            btn.style.opacity = '0.4';
+            btn.disabled = true;
+            btn.title = 'Analisando imagem…';
+
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                var base64 = ev.target.result.split(',')[1];
+
+                fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=AIzaSyAXbf6tm3-HVXcWsotZTmDDPpB2QyvRI-I', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                {
+                                    inline_data: {
+                                        mime_type: 'image/jpeg',
+                                        data: base64
+                                    }
+                                },
+                                {
+                                    text: 'Identifique o produto nesta imagem. Retorne APENAS a marca e o modelo se visível, separados por espaço. A marca tem prioridade máxima. Máximo 3 palavras. Exemplos: "Ozlo Sleepbuds" ou "Nike Barcelona" ou "JBL Flip". Sem tipo de produto genérico, sem explicações, sem pontuação.'
+                                }
+                            ]
+                        }]
+                    })
+                })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    var query = data.candidates[0].content.parts[0].text.trim();
+                    if (query) {
+                        searchInput.value = query;
+                        var evt = document.createEvent('Event');
+                        evt.initEvent('input', true, true);
+                        searchInput.dispatchEvent(evt);
+                        var evt2 = document.createEvent('Event');
+                        evt2.initEvent('keyup', true, true);
+                        searchInput.dispatchEvent(evt2);
+                        searchInput.focus();
+                    } else {
+                        alert('Não foi possível identificar a imagem.');
+                    }
+                })
+                .catch(function() {
+                    alert('Erro ao analisar imagem. Tente novamente.');
+                })
+                .finally(function() {
+                    btn.style.opacity = '';
+                    btn.disabled = false;
+                    btn.title = '<?php echo $this->__('Search by image') ?>';
+                    fileInput.value = '';
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initImageSearch);
+    } else {
+        initImageSearch();
+    }
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
